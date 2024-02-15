@@ -9,7 +9,7 @@ This script automates the backup process for a Docker volume, providing notifica
 2. Run the script as a (sudo) cron job at regular intervals for automated backups.
 3. Ensure the script is executed with the "bash" shell to utilize the "date" command with the correct format.
 4. Alternatively, execute the script with the "sh" shell for proper "date" command usage.
-5. **The script assumes that the container name and volume name are identical. Ensure they match in your setup.**
+5. **The script assumes that the `container name` and `volume name` are identical. Ensure they match in your setup.**
 
 **Script Flow:**
 1. Checks for the existence of "correct_location.md" file; aborts if not found, logging the error and sending a high-priority notification.
