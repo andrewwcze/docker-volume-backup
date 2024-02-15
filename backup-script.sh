@@ -16,11 +16,13 @@
 #!/bin/bash
 
 # Set up variables
-container=<container_name>
-backupDirectory="/path/to/docker-backups"
+container=<your_container_name>
+backupDirectory="/path/to/your/docker-backups"
 logFile="$backupDirectory/backup.log"
 backupDate=$(date +'%Y-%m-%d_%H-%M')
 startTime=$(date +%s)
+maxBackups=2  # Maximum number of backups to keep
+notificationURL="https://your-notification-url/backup-docker"
 
 # Function to log datetime and status to the log file
 log_to_file() {
@@ -29,7 +31,7 @@ log_to_file() {
 
 # Function to send notifications
 send_notification() {
-  curl -H "$1" -H "Priority: $2" -H "Tags: $3" -d "$4" https://your-notification-url/backup-docker
+  curl -H "$1" -H "Priority: $2" -H "Tags: $3" -d "$4" "$notificationURL"
 }
 
 # Check if "correct_location.md" file is present
@@ -42,7 +44,9 @@ if [ ! -f "$backupDirectory/correct_location.md" ]; then
   # Send notification about backup failure
   date=$(date +'%Y-%m-%d')
   time=$(date +'%H:%M:%S')
-  send_notification "Title: ❌📦 Backup $container Failed" "high" "error,$date" "Backup for $container on $backupDate failed. 'correct_location.md' file not found. Date: $date Time: $time"
+  send_notification "Title: ❌📦 Backup $container Failed" "high" "error,$date" "Backup for $container on $backupDate failed. 'correct_location.md' file not found. 
+  Date: $date 
+  Time: $time"
 
   exit 1
 fi
@@ -72,14 +76,18 @@ if tar -cf - -C /var/lib/docker/volumes/$container . | pv -s $(du -sb /var/lib/d
   # Format the duration into HH:MM:SS
   formattedDuration=$(date -u -d @$duration +'%H:%M:%S')
 
+  # Reassign date and time after successful backup
+  date=$(date +'%Y-%m-%d')
+  time=$(date +'%H:%M:%S')
+
   # Check the number of backups and remove the oldest if more than the limit
   backupCount=$(ls -1 $backupDirectory/$container-*.tar.gz 2>/dev/null | wc -l)
   echo "Number of existing backups: $backupCount"
 
-  if [ "$backupCount" -gt 2 ]; then
-    # Sort backups by modification time and remove the oldest one
-    echo "Removing oldest backup(s) to maintain a maximum of 2 backups"
-    ls -t $backupDirectory/$container-*.tar.gz | tail -n +3 | xargs rm --
+  if [ "$backupCount" -gt "$maxBackups" ]; then
+    # Sort backups by modification time and remove the oldest ones
+    echo "Removing oldest backup(s) to maintain a maximum of $maxBackups backups"
+    ls -t $backupDirectory/$container-*.tar.gz | tail -n +$(($maxBackups + 1)) | xargs rm --
   fi
 
   # Start the container again
@@ -88,7 +96,10 @@ if tar -cf - -C /var/lib/docker/volumes/$container . | pv -s $(du -sb /var/lib/d
 
   # Include datetime and time spent in the notification message on new lines
   endDatetime=$(date +'%Y-%m-%d %H:%M:%S')
-  successMessage="Backup for $container on $backupDate successful. Date: $date Time: $time Time Spent: $formattedDuration"
+  successMessage="Backup for $container on $backupDate successful. 
+  Date: $date 
+  Time: $time 
+  Time Spent: $formattedDuration"
   echo -e "Backup and cleanup process completed at:\n$endDatetime.\nTime spent: $formattedDuration\n$successMessage"
 
   # Send notification about successful backup with green checkmark
