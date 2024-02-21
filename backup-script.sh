@@ -1,28 +1,12 @@
-# Author: andrewwcze
-#Description: Docker volume backup script
-# This script creates a tar archive of a Docker volume and sends a notification(ntfy) about the backup process.
-# It also removes the oldest backup if the number of backups exceeds a specified limit.
-# The script uses the "pv" command to show the progress of the backup process.
-# The script also uses the "curl" command to send notifications to a web service.
-# The script assumes that the Docker container is running and that the "pv" and "curl" commands are installed.
-# The script also assumes that the "correct_location.md" file is present in the backup directory.
-# The script should be modified to include the correct backup directory, container name, and notification URL.
-# The script should be run as a (sudo) cron job at regular intervals to create backups.
-# The script should be run with the "bash" shell to use the "date" command with the correct format.
-# The script should be run with the "sh" shell to use the "date" command with the correct format.
-
-#=================================================================================================================
-
 #!/bin/bash
 
 # Set up variables
-container=<your_container_name>
-backupDirectory="/path/to/your/docker-backups"
+container=<container_name> # Replace with the actual container name
+backupDirectory="/path/to/docker-backups" # Replace with the actual path
 logFile="$backupDirectory/backup.log"
 backupDate=$(date +'%Y-%m-%d_%H-%M')
 startTime=$(date +%s)
 maxBackups=2  # Maximum number of backups to keep
-notificationURL="https://your-notification-url/backup-docker"
 
 # Function to log datetime and status to the log file
 log_to_file() {
@@ -31,7 +15,7 @@ log_to_file() {
 
 # Function to send notifications
 send_notification() {
-  curl -H "$1" -H "Priority: $2" -H "Tags: $3" -d "$4" "$notificationURL"
+  curl -H "YOUR_HEADER" -H "Priority: $2" -H "Tags: $3" -d "$4" https://your-notification-service.com/backup-docker # Replace with the actual URL
 }
 
 # Check if "correct_location.md" file is present
@@ -59,66 +43,62 @@ send_notification "Title: 📦 Backup $container Started" "low" "info,$startDate
 echo "Stopping the Docker container: $container"
 docker stop $container
 
-# Create a tar archive of the docker parent folder
-echo "Creating backup: $backupDirectory/$container-$backupDate.tar.gz"
-cd $backupDirectory
+# Loop through volumes and create backups
+for volume in $(docker inspect --format '{{ range .Mounts }}{{ if eq .Type "volume" }}{{ .Name }} {{ end }}{{ end }}' $container); do
+  echo "Creating backup for volume: $volume"
+  cd $backupDirectory
 
-# Use tar to create the archive and send errors to a log file only if they occur
-if tar -cf - -C /var/lib/docker/volumes/$container . | pv -s $(du -sb /var/lib/docker/volumes/$container | awk '{print $1}') | gzip > $container-$backupDate.tar.gz 2> backup_error.log; then
-  echo "Backup successful."
+  # Use tar to create the archive and send errors to a log file only if they occur
+  if tar -cf - -C /var/lib/docker/volumes/$volume . | pv -s $(du -sb /var/lib/docker/volumes/$volume | awk '{print $1}') | nice -n 19 pigz -p2 > $container-$volume-$backupDate.tar.gz 2> backup_error.log; then
+    echo "Backup for volume $volume successful."
+  else
+    echo "Backup for volume $volume failed. Check the error log for details: backup_error.log"
+    # Log the failure to the log file
+    log_to_file "Backup for volume $volume failed. Check the error log for details."
+  fi
+done
 
-  # Get end time
-  endTime=$(date +%s)
+# Get end time
+endTime=$(date +%s)
 
-  # Calculate the time spent in seconds
-  duration=$((endTime - startTime))
+# Calculate the time spent in seconds
+duration=$((endTime - startTime))
 
-  # Format the duration into HH:MM:SS
-  formattedDuration=$(date -u -d @$duration +'%H:%M:%S')
+# Format the duration into HH:MM:SS
+formattedDuration=$(date -u -d @$duration +'%H:%M:%S')
 
-  # Reassign date and time after successful backup
-  date=$(date +'%Y-%m-%d')
-  time=$(date +'%H:%M:%S')
+# Reassign date and time after successful backup
+date=$(date +'%Y-%m-%d')
+time=$(date +'%H:%M:%S')
 
-  # Check the number of backups and remove the oldest if more than the limit
-  backupCount=$(ls -1 $backupDirectory/$container-*.tar.gz 2>/dev/null | wc -l)
-  echo "Number of existing backups: $backupCount"
+# Check the number of backups and remove the oldest if more than the limit
+for volume in $(docker inspect --format '{{ range .Mounts }}{{ if eq .Type "volume" }}{{ .Name }} {{ end }}{{ end }}' $container); do
+  backupCount=$(ls -1 $backupDirectory/$container-$volume-*.tar.gz 2>/dev/null | wc -l)
+  echo "Number of existing backups for volume $volume: $backupCount"
 
   if [ "$backupCount" -gt "$maxBackups" ]; then
     # Sort backups by modification time and remove the oldest ones
-    echo "Removing oldest backup(s) to maintain a maximum of $maxBackups backups"
-    ls -t $backupDirectory/$container-*.tar.gz | tail -n +$(($maxBackups + 1)) | xargs rm --
+    echo "Removing oldest backup(s) for volume $volume to maintain a maximum of $maxBackups backups"
+    ls -t $backupDirectory/$container-$volume-*.tar.gz | tail -n +$(($maxBackups + 1)) | xargs rm --
   fi
+done
 
-  # Start the container again
-  echo "Starting the Docker container: $container"
-  docker start $container
+# Start the container again
+echo "Starting the Docker container: $container"
+docker start $container
 
-  # Include datetime and time spent in the notification message on new lines
-  endDatetime=$(date +'%Y-%m-%d %H:%M:%S')
-  successMessage="Backup for $container on $backupDate successful. 
-  Date: $date 
-  Time: $time 
-  Time Spent: $formattedDuration"
-  echo -e "Backup and cleanup process completed at:\n$endDatetime.\nTime spent: $formattedDuration\n$successMessage"
+# Include datetime and time spent in the notification message on new lines
+endDatetime=$(date +'%Y-%m-%d %H:%M:%S')
+successMessage="Backup for $container on $backupDate successful. 
+Date: $date 
+Time: $time 
+Time Spent: $formattedDuration"
+echo -e "Backup and cleanup process completed at:\n$endDatetime.\nTime spent: $formattedDuration\n$successMessage"
 
-  # Send notification about successful backup with green checkmark
-  send_notification "Title: ✅📦 Backup $container Completed" "low" "success,$date" "$successMessage"
-else
-  echo "Backup failed. Check the error log for details: backup_error.log"
-
-  # Log the failure to the log file
-  log_to_file "Backup failed. Check the error log for details."
-
-  # Include datetime in the notification message on a new line
-  endDatetime=$(date +'%Y-%m-%d %H:%M:%S')
-
-  # Send notification about backup failure and include the error log
-  errorMessage="Backup for $container on $backupDate failed. Check the error log for details. Date&time:\n$endDatetime."
-  send_notification "Title: ❌📦 Backup $container Failed" "high" "error,$date" "$errorMessage" -F "files[]=@backup_error.log"
-fi
+# Send notification about successful backup with green checkmark
+send_notification "Title: ✅📦 Backup $container Completed" "low" "success,$date" "$successMessage"
 
 # Log the completion of the process to the log file
-log_to_file "Backup and cleanup process completed."
+log_to_file "Backup and cleanup process for $container completed."
 
-echo "Backup and cleanup process completed."
+echo "Backup and cleanup process for $container completed."
