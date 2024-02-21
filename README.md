@@ -21,4 +21,6 @@ This script automates the backup process for a Docker volume, providing notifica
 
 **Note:** 
 - Adjust the script to your specific needs and environment.
-- Enjoy :)
+- Ensure the "correct_location.md" file is present and the specified paths are accurate.
+- Make sure to install the required dependencies (e.g., "pv" and "curl").
+- Enjoy! 😊
