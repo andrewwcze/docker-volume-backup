@@ -1,12 +1,17 @@
+# Author: andrewwcze
+# Version 2024.03.21
+# Free to use and customize <3
+
+
 #!/bin/bash
 
 # Set up variables
-container=<container_name> # Replace with the actual container name
-backupDirectory="/path/to/docker-backups" # Replace with the actual path
+container=<YOUR_CONTAINER_NAME>
+backupDirectory="<YOUR_BACKUP_DIRECTORY>"
 logFile="$backupDirectory/backup.log"
 backupDate=$(date +'%Y-%m-%d_%H-%M')
 startTime=$(date +%s)
-maxBackups=2  # Maximum number of backups to keep
+maxBackups=<MAXIMUM_NUMBER_OF_BACKUPS_TO_KEEP>
 
 # Function to log datetime and status to the log file
 log_to_file() {
@@ -15,7 +20,7 @@ log_to_file() {
 
 # Function to send notifications
 send_notification() {
-  curl -H "YOUR_HEADER" -H "Priority: $2" -H "Tags: $3" -d "$4" https://your-notification-service.com/backup-docker # Replace with the actual URL
+  curl -H "$1" -H "Priority: $2" -H "Tags: $3" -d "$4" <YOUR_NOTIFICATION_URL>
 }
 
 # Check if "correct_location.md" file is present
@@ -35,6 +40,12 @@ if [ ! -f "$backupDirectory/correct_location.md" ]; then
   exit 1
 fi
 
+# Create directory for container if it doesn't exist
+containerDirectory="$backupDirectory/$container"
+if [ ! -d "$containerDirectory" ]; then
+  mkdir -p "$containerDirectory"
+fi
+
 # Notify that the backup is starting
 startDate=$(date +'%Y-%m-%d')
 send_notification "Title: 📦 Backup $container Started" "low" "info,$startDate" ""
@@ -46,7 +57,7 @@ docker stop $container
 # Loop through volumes and create backups
 for volume in $(docker inspect --format '{{ range .Mounts }}{{ if eq .Type "volume" }}{{ .Name }} {{ end }}{{ end }}' $container); do
   echo "Creating backup for volume: $volume"
-  cd $backupDirectory
+  cd $containerDirectory
 
   # Use tar to create the archive and send errors to a log file only if they occur
   if tar -cf - -C /var/lib/docker/volumes/$volume . | pv -s $(du -sb /var/lib/docker/volumes/$volume | awk '{print $1}') | nice -n 19 pigz -p2 > $container-$volume-$backupDate.tar.gz 2> backup_error.log; then
@@ -73,13 +84,13 @@ time=$(date +'%H:%M:%S')
 
 # Check the number of backups and remove the oldest if more than the limit
 for volume in $(docker inspect --format '{{ range .Mounts }}{{ if eq .Type "volume" }}{{ .Name }} {{ end }}{{ end }}' $container); do
-  backupCount=$(ls -1 $backupDirectory/$container-$volume-*.tar.gz 2>/dev/null | wc -l)
+  backupCount=$(ls -1 $containerDirectory/$container-$volume-*.tar.gz 2>/dev/null | wc -l)
   echo "Number of existing backups for volume $volume: $backupCount"
 
   if [ "$backupCount" -gt "$maxBackups" ]; then
     # Sort backups by modification time and remove the oldest ones
     echo "Removing oldest backup(s) for volume $volume to maintain a maximum of $maxBackups backups"
-    ls -t $backupDirectory/$container-$volume-*.tar.gz | tail -n +$(($maxBackups + 1)) | xargs rm --
+    ls -t $containerDirectory/$container-$volume-*.tar.gz | tail -n +$(($maxBackups + 1)) | xargs rm --
   fi
 done
 
