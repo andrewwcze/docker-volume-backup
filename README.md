@@ -3,6 +3,10 @@
 # Docker Volume Backup Script
 **Author:** andrewwcze
 **Version:** 2024.03.21
+Tested on: Raspberry Pi 4 Model B Rev 1.2 
+OS: Debian GNU/Linux 11 (bullseye) 
+Kernel: Linux 6.1.21-v8+
+Arch.: arm64
 
 **Description:**
 This script automates the backup process for a Docker volume, providing notifications via ntfy (notification service). The script also manages backup retention by removing the oldest backup when the specified limit is exceeded. Key components include the "pv" command to display backup progress and the "curl" command to send notifications to an external service. Prerequisites include a running Docker container, the installation of "pv" and "curl" commands, and the presence of the "correct_location.md" file in the backup directory.
