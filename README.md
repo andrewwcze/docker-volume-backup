@@ -3,7 +3,7 @@
 **Version:** 2024.03.21
 
 Tested on: Raspberry Pi 4 Model B Rev 1.2
-OS: Debian GNU/Linux 11 (bullseye) 
+OS: Debian GNU/Linux 11 (bullseye)
 Kernel: Linux 6.1.21-v8+
 Arch.: arm64
 
